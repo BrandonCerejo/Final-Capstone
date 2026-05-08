@@ -7,21 +7,24 @@ const API = 'http://localhost:8000'
 
 export default function ReportsPage() {
   const navigate  = useNavigate()
-  const [reports,  setReports]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [selected, setSelected] = useState(null)
-  const [sending,  setSending]  = useState(null)   // report id currently being sent
-  const [sentMsg,  setSentMsg]  = useState({})      // { [id]: message }
-  const [lightbox, setLightbox] = useState(null)
+  const [reports,        setReports]        = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [selected,       setSelected]       = useState(null)
+  const [sending,        setSending]        = useState(null)
+  const [sentMsg,        setSentMsg]        = useState({})
+  const [lightbox,       setLightbox]       = useState(null)
+  const [doctors,        setDoctors]        = useState([])
+  const [showDoctorPick, setShowDoctorPick] = useState(null)
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
 
   useEffect(() => {
     if (!storedUser.email) { navigate('/'); return }
     fetchReports()
+    fetchDoctors()
   }, [])
 
-  const fetchReports = async () => {
+const fetchReports = async () => {
     setLoading(true)
     try {
       const { data } = await axios.get(`${API}/patient/reports`, {
@@ -34,21 +37,32 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
+}
+  const fetchDoctors = async () => {
+    try {
+      const { data } = await axios.get(`${API}/doctor/list`)
+      setDoctors(data)
+    } catch { /* silent */ }
   }
 
-  const sendToDoctor = async (report) => {
+  const sendToDoctor = async (report, doctor) => {
     setSending(report.id)
+    setShowDoctorPick(null)
     try {
       await axios.post(`${API}/doctor/send-report`, {
         report_id:     report.id,
         patient_email: storedUser.email,
+        doctor_email:  doctor.email,
+        doctor_name:   doctor.name,
       })
-      setSentMsg(prev => ({ ...prev, [report.id]: 'Sent to doctor successfully!' }))
+      setSentMsg(prev => ({ ...prev, [report.id]: `Sent to ${doctor.name} successfully!` }))
       setReports(prev => prev.map(r =>
-        r.id === report.id ? { ...r, sent_to_doctor: true } : r
+        r.id === report.id
+          ? { ...r, sent_to_doctor: true, doctor_name: doctor.name }
+          : r
       ))
       if (selected?.id === report.id)
-        setSelected(prev => ({ ...prev, sent_to_doctor: true }))
+        setSelected(prev => ({ ...prev, sent_to_doctor: true, doctor_name: doctor.name }))
     } catch (err) {
       setSentMsg(prev => ({
         ...prev,
@@ -58,6 +72,17 @@ export default function ReportsPage() {
       setSending(null)
     }
   }
+
+  // close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.target.closest('.doctor-picker-wrap')) {
+        setShowDoctorPick(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const formatDate = (iso) => {
     if (!iso) return ''
@@ -146,20 +171,89 @@ export default function ReportsPage() {
                   <div className="rp-detail-label">Report</div>
                   <h2 className="rp-detail-title">{formatDate(selected.created_at)}</h2>
                 </div>
+
                 <div className="rp-detail-actions">
                   {!selected.sent_to_doctor ? (
-                    <button
-                      className="rp-btn-primary"
-                      onClick={() => sendToDoctor(selected)}
-                      disabled={sending === selected.id}
-                    >
-                      {sending === selected.id ? 'Sending…' : '📤 Send to Doctor'}
-                    </button>
+                    <div className="doctor-picker-wrap" style={{ position: 'relative' }}>
+                      <button
+                        className="rp-btn-primary"
+                        onClick={() => setShowDoctorPick(
+                          showDoctorPick === selected.id ? null : selected.id
+                        )}
+                        disabled={sending === selected.id}
+                      >
+                        {sending === selected.id ? 'Sending…' : '📤 Send to Doctor ▾'}
+                      </button>
+
+                      {showDoctorPick === selected.id && (
+                        <div style={{
+                          position: 'absolute', top: '110%', right: 0,
+                          background: '#1a202c',
+                          border: '1px solid #2d3748',
+                          borderRadius: '8px',
+                          minWidth: '240px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                          zIndex: 100,
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            padding: '0.5rem 0.75rem',
+                            fontSize: '0.75rem',
+                            color: '#a0aec0',
+                            borderBottom: '1px solid #2d3748',
+                            letterSpacing: '0.05em',
+                            textTransform: 'uppercase'
+                          }}>
+                            Select a Doctor
+                          </div>
+
+                          {doctors.length === 0 && (
+                            <div style={{
+                              padding: '0.75rem',
+                              color: '#a0aec0',
+                              fontSize: '0.85rem'
+                            }}>
+                              No doctors available
+                            </div>
+                          )}
+
+                          {doctors.map(doc => (
+                            <button
+                              key={doc.id}
+                              onClick={() => sendToDoctor(selected, doc)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '0.65rem 0.75rem',
+                                background: 'none',
+                                border: 'none',
+                                borderBottom: '1px solid #2d3748',
+                                color: '#e2e8f0',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#2d3748'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                            >
+                              <div style={{ fontWeight: '600' }}>{doc.name}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#a0aec0', marginTop: '0.15rem' }}>
+                                {doc.email}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <span className="rp-sent-label">
-                      {selected.has_feedback ? '✓ Doctor reviewed' : '⏳ Awaiting doctor feedback'}
+                      {selected.has_feedback
+                        ? '✓ Doctor reviewed'
+                        : `⏳ Awaiting feedback${selected.doctor_name ? ` from ${selected.doctor_name}` : ''}`
+                      }
                     </span>
                   )}
+
                   {sentMsg[selected.id] && (
                     <span className={`rp-msg ${sentMsg[selected.id].includes('Failed') ? 'rp-msg--err' : 'rp-msg--ok'}`}>
                       {sentMsg[selected.id]}
@@ -168,12 +262,14 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              {/* ── Doctor Feedback banner — shown prominently if exists ── */}
+              {/* ── Doctor Feedback banner ── */}
               {selected.has_feedback && selected.feedback && (
                 <div className="rp-feedback-banner">
                   <div className="rp-feedback-banner-header">
                     <span className="rp-feedback-icon">💬</span>
-                    <span className="rp-feedback-title">Doctor's Feedback</span>
+                    <span className="rp-feedback-title">
+    {selected.doctor_name ? `Feedback from ${selected.doctor_name}` : "Doctor's Feedback"}
+</span>
                     {selected.feedback_at && (
                       <span className="rp-feedback-date">{formatDate(selected.feedback_at)}</span>
                     )}

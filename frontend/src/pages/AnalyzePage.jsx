@@ -5,7 +5,7 @@ import './AnalyzePage.css'
 import ReportChatbot from '../components/ReportChatbot'
 import KnowledgeChatbot from '../components/KnowledgeChatbot'
 
-const API_URL        = 'http://localhost:8000/analyze'
+const API_URL         = 'http://localhost:8000/analyze'
 const PDF_PREVIEW_URL = 'http://localhost:8000/preview-pdf'
 const PDF_GENERATE_URL = 'http://localhost:8000/generate-pdf'
 
@@ -29,15 +29,39 @@ export default function AnalyzePage() {
   const [result,       setResult]       = useState(null)
   const [lightbox,     setLightbox]     = useState(null)
   const [pdfLoading,   setPdfLoading]   = useState(false)
-  const [sending,   setSending]   = useState(false)
-  const [sentMsg,   setSentMsg]   = useState('')
-  const [reportId,  setReportId]  = useState(null)
+  const [sending,      setSending]      = useState(false)
+  const [sentMsg,      setSentMsg]      = useState('')
+  const [reportId,     setReportId]     = useState(null)
+  const [doctors,        setDoctors]        = useState([])
+  const [showDoctorPick, setShowDoctorPick] = useState(false)
 
   // ── PDF preview state ──────────────────────────────────────────────────────
-  const [pdfPages,        setPdfPages]        = useState([])   // base64 PNG strings
+  const [pdfPages,          setPdfPages]          = useState([])
   const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false)
   const [pdfPreviewError,   setPdfPreviewError]   = useState(null)
-  const [activeTab,         setActiveTab]         = useState('report') // 'report' | 'pdf'
+  const [activeTab,         setActiveTab]         = useState('report')
+
+  // ── fetch doctors on mount ─────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      try {
+        const { data } = await axios.get('http://localhost:8000/doctor/list')
+        setDoctors(data)
+      } catch { /* silent */ }
+    }
+    fetchDoctors()
+  }, [])
+
+  // ── close dropdown when clicking outside ──────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.target.closest('.ap-doctor-picker-wrap')) {
+        setShowDoctorPick(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   /* ── file selection ── */
   const handleFile = (f) => {
@@ -59,7 +83,7 @@ export default function AnalyzePage() {
   const onDragOver  = (e) => { e.preventDefault(); setDragging(true) }
   const onDragLeave = () => setDragging(false)
 
-  /* ── submit ── */
+  /* ── analyze ── */
   const handleAnalyze = async () => {
     if (!file) return
     setLoading(true)
@@ -68,6 +92,7 @@ export default function AnalyzePage() {
     setPdfPages([])
     setReportId(null)
     setSentMsg('')
+    setShowDoctorPick(false)
 
     const steps = [
       'Uploading image…',
@@ -85,11 +110,11 @@ export default function AnalyzePage() {
     try {
       const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
       const form = new FormData()
-      form.append('file',           file)
-      form.append('patient_name',   storedUser.name   || '')
-      form.append('patient_age',    String(storedUser.age    || ''))
-      form.append('patient_sex',    storedUser.gender || '')
-      form.append('patient_email',  storedUser.email  || '')
+      form.append('file',          file)
+      form.append('patient_name',  storedUser.name   || '')
+      form.append('patient_age',   String(storedUser.age || ''))
+      form.append('patient_sex',   storedUser.gender || '')
+      form.append('patient_email', storedUser.email  || '')
 
       const { data } = await axios.post(API_URL, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -114,7 +139,6 @@ export default function AnalyzePage() {
   /* ── fetch PDF preview whenever result arrives ── */
   useEffect(() => {
     if (!result) return
-
     const fetchPreview = async () => {
       setPdfPreviewLoading(true)
       setPdfPreviewError(null)
@@ -127,19 +151,19 @@ export default function AnalyzePage() {
           patient_email: JSON.parse(localStorage.getItem('user') || '{}').email || '',
         })
         setPdfPages(data.pages || [])
-      } catch (err) {
+      } catch {
         setPdfPreviewError('Could not load PDF preview.')
       } finally {
         setPdfPreviewLoading(false)
       }
     }
-
     fetchPreview()
   }, [result])
 
   const reset = () => {
     setFile(null); setPreview(null); setResult(null); setError(null)
     setPdfPages([]); setPdfPreviewError(null); setActiveTab('report')
+    setSentMsg(''); setShowDoctorPick(false)
   }
 
   const handleDownloadPdf = async () => {
@@ -156,9 +180,9 @@ export default function AnalyzePage() {
         },
         { responseType: 'blob' }
       )
-      const url      = window.URL.createObjectURL(new Blob([response.data]))
-      const link     = document.createElement('a')
-      link.href      = url
+      const url  = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href  = url
       link.setAttribute('download', 'PneumaVision_Report.pdf')
       document.body.appendChild(link)
       link.click()
@@ -171,17 +195,21 @@ export default function AnalyzePage() {
     }
   }
 
-  const sendToDoctor = async () => {
+  /* ── send to doctor ── */
+  const sendToDoctor = async (doctor) => {
     const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
     if (!reportId || !storedUser.email) return
     setSending(true)
     setSentMsg('')
+    setShowDoctorPick(false)
     try {
       await axios.post('http://localhost:8000/doctor/send-report', {
         report_id:     reportId,
         patient_email: storedUser.email,
+        doctor_email:  doctor.email,
+        doctor_name:   doctor.name,
       })
-      setSentMsg('✓ Sent to doctor!')
+      setSentMsg(`✓ Sent to ${doctor.name}!`)
     } catch (err) {
       setSentMsg(err.response?.data?.detail || 'Failed to send.')
     } finally {
@@ -214,22 +242,15 @@ export default function AnalyzePage() {
         <div className="ap-upload-view container">
           <div className="ap-header">
             <div className="ap-section-label">Chest X-Ray Analyzer</div>
-
             <h1 className="ap-title">Upload & Analyse</h1>
-
             <p className="ap-subtitle">
               Upload a chest X-ray image to receive AI-generated findings and a structured radiology report.
             </p>
-
             <div className="ap-header-actions">
               <button
                 className="ap-btn-reset"
                 onClick={() => navigate('/reports')}
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.75rem 1.4rem',
-                  fontSize: '0.9rem'
-                }}
+                style={{ marginTop: '1rem', padding: '0.75rem 1.4rem', fontSize: '0.9rem' }}
               >
                 📋 View Previous Reports
               </button>
@@ -312,7 +333,10 @@ export default function AnalyzePage() {
                 {result.num_findings} Finding{result.num_findings !== 1 ? 's' : ''} Detected
               </h2>
             </div>
+
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+
+              {/* Download PDF */}
               <button
                 className="ap-btn-analyze"
                 style={{ minWidth: 'unset', padding: '0.65rem 1.5rem', fontSize: '0.85rem' }}
@@ -325,17 +349,74 @@ export default function AnalyzePage() {
                   </span>
                 ) : '⬇ Download PDF'}
               </button>
+
+              {/* Send to Doctor — dropdown */}
               {reportId && (
-                <button
-                  className="ap-btn-analyze"
-                  style={{ minWidth: 'unset', padding: '0.65rem 1.5rem', fontSize: '0.85rem',
-                          background: sentMsg.startsWith('✓') ? '#2d6a4f' : undefined }}
-                  onClick={sendToDoctor}
-                  disabled={sending || sentMsg.startsWith('✓')}
-                >
-                  {sending ? '📤 Sending…' : sentMsg.startsWith('✓') ? sentMsg : '📤 Send to Doctor'}
-                </button>
+                <div className="ap-doctor-picker-wrap" style={{ position: 'relative' }}>
+                  <button
+                    className="ap-btn-analyze"
+                    style={{
+                      minWidth: 'unset', padding: '0.65rem 1.5rem', fontSize: '0.85rem',
+                      background: sentMsg.startsWith('✓') ? '#2d6a4f' : undefined
+                    }}
+                    onClick={() => {
+                      if (!sentMsg.startsWith('✓')) setShowDoctorPick(p => !p)
+                    }}
+                    disabled={sending || sentMsg.startsWith('✓')}
+                  >
+                    {sending
+                      ? '📤 Sending…'
+                      : sentMsg.startsWith('✓')
+                        ? sentMsg
+                        : '📤 Send to Doctor ▾'}
+                  </button>
+
+                  {showDoctorPick && (
+                    <div style={{
+                      position: 'absolute', top: '110%', right: 0,
+                      background: '#1a202c', border: '1px solid #2d3748',
+                      borderRadius: '8px', minWidth: '240px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      zIndex: 100, overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 0.75rem', fontSize: '0.75rem',
+                        color: '#a0aec0', borderBottom: '1px solid #2d3748',
+                        letterSpacing: '0.05em', textTransform: 'uppercase'
+                      }}>
+                        Select a Doctor
+                      </div>
+                      {doctors.length === 0 && (
+                        <div style={{ padding: '0.75rem', color: '#a0aec0', fontSize: '0.85rem' }}>
+                          No doctors available
+                        </div>
+                      )}
+                    {doctors.map(doc => (
+                        <div
+                            key={doc.id}
+                            onClick={() => sendToDoctor(doc)}
+                            style={{
+                                width: '100%', textAlign: 'left',
+                                padding: '0.65rem 0.75rem',
+                                borderBottom: '1px solid #2d3748',
+                                color: '#e2e8f0', cursor: 'pointer',
+                                fontSize: '0.875rem',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#2d3748'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#1a202c'}
+                        >
+                            <div style={{ fontWeight: '600', pointerEvents: 'none' }}>{doc.name}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#a0aec0', marginTop: '0.15rem', pointerEvents: 'none' }}>
+                                {doc.email}
+                            </div>
+                        </div>
+                    ))}
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/* My Reports + New Analysis */}
               <button
                 className="ap-btn-reset"
                 style={{ padding: '0.65rem 1.25rem', fontSize: '0.85rem' }}
@@ -345,6 +426,7 @@ export default function AnalyzePage() {
               </button>
               <button className="ap-btn-reset" onClick={reset}>New Analysis</button>
             </div>
+
             {sentMsg && !sentMsg.startsWith('✓') && (
               <div className="ap-error" style={{ marginTop: '0.5rem' }}>{sentMsg}</div>
             )}
@@ -367,7 +449,7 @@ export default function AnalyzePage() {
             </button>
           </div>
 
-          {/* ── TAB: Interactive Report (original two-column layout) ── */}
+          {/* ── TAB: Interactive Report ── */}
           {activeTab === 'report' && (
             <div className="ap-results-grid">
 

@@ -14,3 +14,4 @@ db = client[DB_NAME]
 
 users_collection   = db["users"]
 reports_collection = db["reports"]
+label_corrections_collection = db["label_corrections"]

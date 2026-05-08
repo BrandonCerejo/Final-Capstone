@@ -11,10 +11,15 @@ const PRIORITY_META = {
   low:      { label: 'Low',      color: '#68d391' },
 }
 
+const DISEASE_LABELS = [
+  "Atelectasis","Cardiomegaly","Effusion","Infiltration","Mass",
+  "Nodule","Pneumonia","Pneumothorax","Consolidation","Edema",
+  "Emphysema","Fibrosis","Pleural_Thickening","Hernia"
+]
+
 export default function DoctorPortal() {
   const navigate = useNavigate()
 
-  // Doctor is set by AuthPage on successful doctor login — redirect if missing
   const [doctor]   = useState(() => JSON.parse(localStorage.getItem('doctor') || 'null'))
   const [reports,  setReports]  = useState([])
   const [selected, setSelected] = useState(null)
@@ -24,24 +29,40 @@ export default function DoctorPortal() {
   const [loading,  setLoading]  = useState(false)
   const [lightbox, setLightbox] = useState(null)
 
+  const [labelCorrect,   setLabelCorrect]   = useState(null)
+  const [selectedLabels, setSelectedLabels] = useState([])
+  const [corrSaving,     setCorrSaving]     = useState(false)
+  const [corrMsg,        setCorrMsg]        = useState('')
+  const [exportReady,    setExportReady]    = useState(false)
+  const [corrSubmitted,  setCorrSubmitted]  = useState(false)
+
   useEffect(() => {
     if (!doctor) { navigate('/auth'); return }
     fetchReports()
   }, [])
 
-  const fetchReports = async () => {
+const fetchReports = async () => {
     setLoading(true)
     try {
-      const { data } = await axios.get(`${API}/doctor/reports`)
-      setReports(data)
+      // const { data } = await axios.get(`${API}/doctor/reports`)
+      const { data } = await axios.get(`${API}/doctor/reports`, {
+    params: { doctor_email: doctor.email }
+})
+      setReports(data.reports)
+      setExportReady(data.export_ready)
     } catch { /* silent */ }
     finally { setLoading(false) }
-  }
+}
 
   const openReport = (r) => {
     setSelected(r)
     setFeedback(r.feedback || '')
     setSavedMsg('')
+    setLabelCorrect(null)
+    setSelectedLabels([])
+    setCorrMsg('')
+    // Only mark submitted if backend explicitly says so
+    setCorrSubmitted(r.has_label_correction === true)
   }
 
   const submitFeedback = async () => {
@@ -64,6 +85,46 @@ export default function DoctorPortal() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const submitLabelCorrection = async () => {
+    if (labelCorrect === null) return
+    setCorrSaving(true)
+    setCorrMsg('')
+    const predictedLabels = (selected.report?.findings || []).map(f => f.condition)
+    try {
+      const { data } = await axios.post(`${API}/doctor/label-correction`, {
+        report_id:        selected.id,
+        doctor_email:     doctor.email,
+        predicted_labels: predictedLabels,
+        is_correct:       labelCorrect,
+        correct_labels:   labelCorrect ? predictedLabels : selectedLabels,
+      })
+      setCorrMsg('Correction saved!')
+      setExportReady(data.export_ready)
+      setCorrSubmitted(true)
+      // Update local reports list so switching away and back stays correct
+      setReports(prev => prev.map(r =>
+        r.id === selected.id ? { ...r, has_label_correction: true } : r
+      ))
+      setSelected(prev => ({ ...prev, has_label_correction: true }))
+    } catch {
+      setCorrMsg('Failed to save. Try again.')
+    } finally {
+      setCorrSaving(false)
+    }
+  }
+
+  const downloadTrainingData = async () => {
+    const res  = await fetch(`${API}/doctor/export-training-data`)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'training_data.zip'
+    a.click()
+    URL.revokeObjectURL(url)
+    setExportReady(false)
   }
 
   const handleSignOut = () => {
@@ -118,7 +179,31 @@ export default function DoctorPortal() {
           )}
         </div>
 
-        <button className="dp-btn-logout" onClick={handleSignOut}>Sign Out</button>
+        {/* {exportReady && (
+    <button
+        onClick={downloadTrainingData}
+        style={{
+            margin: '0 1rem 0.75rem',
+            padding: '0.6rem 1rem',
+            borderRadius: '6px',
+            border: 'none',
+            background: '#d69e2e',
+            color: '#000',
+            fontWeight: '700',
+            cursor: 'pointer',
+            width: 'calc(100% - 2rem)',
+            fontSize: '0.85rem',
+            lineHeight: '1.4'
+        }}
+    >⬇ Download Training ZIP<br/>
+        <span style={{ fontSize:'0.75rem', fontWeight:'400' }}>
+            50+ corrections ready
+        </span>
+    </button>
+)} */}
+<button className="dp-btn-logout" onClick={handleSignOut}>Sign Out</button>
+
+       
       </aside>
 
       {/* ── Main ── */}
@@ -232,6 +317,115 @@ export default function DoctorPortal() {
                       {saving ? 'Saving…' : selected.has_feedback ? 'Update Feedback' : 'Submit Feedback'}
                     </button>
                   </div>
+                </div>
+
+                {/* ── Label Correction ── */}
+                <div className="dp-section">
+                  <h3 className="dp-section-title">Label Correction</h3>
+
+                  {corrSubmitted ? (
+                    <div style={{
+                      padding: '0.75rem 1rem', borderRadius: '8px',
+                      background: '#1a2e1a', border: '1px solid #38a169',
+                      display: 'flex', alignItems: 'center', gap: '0.6rem'
+                    }}>
+                      <span style={{ fontSize: '1.1rem' }}>✅</span>
+                      <div>
+                        <div style={{ color: '#68d391', fontWeight: '600', fontSize: '0.9rem' }}>
+                          Correction already submitted
+                        </div>
+                        <div style={{ color: '#a0aec0', fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                          Label correction has been recorded for this report.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: '0.85rem', color: '#a0aec0', marginBottom: '0.75rem' }}>
+                        AI predicted: <strong style={{ color: '#fff' }}>
+                          {(selected.report?.findings || []).map(f => f.condition).join(', ') || 'No findings'}
+                        </strong>
+                      </p>
+
+                      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <button
+                          onClick={() => { setLabelCorrect(true); setSelectedLabels([]) }}
+                          style={{
+                            padding: '0.4rem 1rem', borderRadius: '6px', border: 'none',
+                            cursor: 'pointer', fontWeight: '600',
+                            background: labelCorrect === true ? '#38a169' : '#2d3748',
+                            color: '#fff'
+                          }}
+                        >✅ Correct</button>
+                        <button
+                          onClick={() => setLabelCorrect(false)}
+                          style={{
+                            padding: '0.4rem 1rem', borderRadius: '6px', border: 'none',
+                            cursor: 'pointer', fontWeight: '600',
+                            background: labelCorrect === false ? '#e53e3e' : '#2d3748',
+                            color: '#fff'
+                          }}
+                        >❌ Incorrect</button>
+                      </div>
+
+                      {labelCorrect === false && (
+                        <div style={{ marginBottom: '1rem' }}>
+                          <p style={{ fontSize: '0.8rem', color: '#a0aec0', marginBottom: '0.5rem' }}>
+                            Select correct labels:
+                          </p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                            {DISEASE_LABELS.map(lbl => (
+                              <label key={lbl} style={{
+                                display: 'flex', alignItems: 'center',
+                                gap: '0.4rem', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer'
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedLabels.includes(lbl)}
+                                  onChange={e => setSelectedLabels(prev =>
+                                    e.target.checked ? [...prev, lbl] : prev.filter(x => x !== lbl)
+                                  )}
+                                />
+                                {lbl}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {labelCorrect !== null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <button
+                            onClick={submitLabelCorrection}
+                            disabled={corrSaving || (labelCorrect === false && selectedLabels.length === 0)}
+                            style={{
+                              padding: '0.45rem 1.2rem', borderRadius: '6px', border: 'none',
+                              background: '#3182ce', color: '#fff', fontWeight: '600', cursor: 'pointer'
+                            }}
+                          >{corrSaving ? 'Saving…' : 'Submit Correction'}</button>
+                          {corrMsg && (
+                            <span style={{
+                              fontSize: '0.82rem',
+                              color: corrMsg.includes('Failed') ? '#fc8181' : '#68d391'
+                            }}>
+                              {corrMsg}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* {exportReady && (
+                    <button
+                      onClick={downloadTrainingData}
+                      style={{
+                        marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '6px',
+                        border: 'none', background: '#d69e2e', color: '#000',
+                        fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >⬇ Download Training ZIP (50+ ready)</button>
+                  )} */}
                 </div>
 
               </div>

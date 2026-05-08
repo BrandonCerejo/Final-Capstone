@@ -4,9 +4,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-BASE_DIR   = Path(__file__).parent                  # chatbot/ folder
+BASE_DIR   = Path(__file__).parent                 
 KB_PATH = BASE_DIR / "Knowledge Base.pdf"
-CHROMA_DIR = str(BASE_DIR / "chroma_db")            # where DB is saved to disk
+CHROMA_DIR = str(BASE_DIR / "chroma_db")         
 
 
 CHUNK_SIZE    = 800
@@ -21,7 +21,6 @@ def build():
     print("  PneumaVision — Knowledge Base Vector DB Builder")
     print("=" * 60)
 
-    # ── Step 1: Load the knowledge base ──────────────────────────────────────
     print(f"\n[1/4] Loading knowledge base from: {KB_PATH.name}")
     if not KB_PATH.exists():
         raise FileNotFoundError(
@@ -33,7 +32,6 @@ def build():
     print(f"  Loaded {len(documents)} document(s), "
           f"{sum(len(d.page_content) for d in documents):,} characters total")
 
-    # ── Step 2: Split into chunks ─────────────────────────────────────────────
     print(f"\n[2/4] Splitting into chunks "
           f"(size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})...")
     splitter = RecursiveCharacterTextSplitter(
@@ -51,17 +49,15 @@ def build():
     print(f"  {chunks[0].page_content[:200]}...")
     print(f"  {'-'*50}")
 
-    # ── Step 3: Load embedding model ──────────────────────────────────────────
     print(f"\n[3/4] Loading embedding model: {EMBED_MODEL}")
     print("  (This may take a moment on first run — model will be cached)")
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBED_MODEL,
-        model_kwargs={"device": "cpu"},   # use "cuda" if you have a GPU
+        model_kwargs={"device": "cpu"},   
         encode_kwargs={"normalize_embeddings": True},
     )
     print("  Embedding model ready")
 
-    # ── Step 4: Embed chunks and save to ChromaDB ─────────────────────────────
     print(f"\n[4/4] Embedding {len(chunks)} chunks and saving to: {CHROMA_DIR}")
     print("  (This is the slow step — only runs once)")
 

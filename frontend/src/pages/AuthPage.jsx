@@ -164,7 +164,7 @@ export default function AuthPage({ onAuth }) {
               type="button"
               onClick={() => setMode('doctor')}
             >
-              🩺 Doctor
+              Doctor Sign-in
             </button>
           </div>
 

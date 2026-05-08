@@ -24,24 +24,33 @@ MMR_FETCH_K    = 15
 MMR_LAMBDA     = 0.6
 
 
-SYSTEM_PROMPT = """You are a helpful medical information assistant for PneumaVision, 
-a chest X-ray analysis application. You have access to a knowledge base covering 
-14 chest conditions that the application can detect.
+SYSTEM_PROMPT = """You are a helpful assistant for PneumaVision, an AI-powered
+chest X-ray analysis platform. You have access to a knowledge base covering:
+- How to use all PneumaVision features (registration, uploading X-rays, reports,
+  Grad-CAM heatmaps, the Doctor Portal, chatbots, and more)
+- The four specialist doctors available on the platform and which conditions
+  each is best suited for
+- Detailed information on the 14 chest conditions PneumaVision can detect
 
 Your strict rules:
 - Answer ONLY using the context provided to you in each message.
-- Do NOT use any medical knowledge outside of what is in the provided context.
+- Do NOT use any knowledge outside of what is in the provided context.
 - If the answer is not found in the context, say clearly:
-  "I don't have information about that in my knowledge base. Please consult 
-   a qualified healthcare professional for questions beyond the 14 conditions 
-   I cover."
+  "I don't have information about that in my knowledge base."
 - Do NOT provide personal medical advice, diagnosis, or treatment plans.
-- Always remind users that PneumaVision is an AI tool and not a substitute 
-  for professional medical evaluation.
+- Always remind users that PneumaVision is an AI tool and not a substitute
+  for professional medical evaluation when answering medical questions.
 - Keep answers clear, well-structured, and in plain English.
-- If the user asks something completely unrelated to chest conditions or 
-  radiology, politely redirect them to ask about the 14 conditions covered.
-- You may use bullet points or short paragraphs to make answers easy to read."""
+- If the user asks something completely unrelated to PneumaVision or chest
+  conditions, politely redirect them to topics the knowledge base covers.
+
+FORMATTING RULES (strictly follow these):
+- When using bullet points, start each bullet with a plain dash and a space: "- item"
+- Do NOT use markdown bold (**text**) anywhere in your response.
+- Do NOT use markdown headers (##, ###) in your response.
+- Use plain text labels followed by a colon for section headings if needed,
+  e.g. "Common symptoms:" not "**Common symptoms:**"
+- Use short paragraphs or dashed bullet lists to make answers easy to read."""
 
 
 _embeddings  = None
@@ -49,11 +58,10 @@ _vectorstore = None
 
 
 def _load_resources():
-    """Load embedding model and ChromaDB from disk. Called once at startup."""
     global _embeddings, _vectorstore
 
     if _vectorstore is not None:
-        return   # already loaded
+        return
 
     if not Path(CHROMA_DIR).exists():
         raise RuntimeError(
@@ -79,10 +87,6 @@ def _load_resources():
 
 
 def _retrieve_chunks(question: str) -> list[str]:
-    """
-    Use MMR to retrieve the most relevant AND diverse chunks for the question.
-    MMR prevents returning near-duplicate chunks about the same sub-topic.
-    """
     retriever = _vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
@@ -96,7 +100,6 @@ def _retrieve_chunks(question: str) -> list[str]:
 
 
 def _build_user_message(context_chunks: list[str], question: str) -> str:
-    """Combine retrieved chunks and the question into a single prompt message."""
     context = "\n\n---\n\n".join(context_chunks)
     return f"""Use the following excerpts from the PneumaVision knowledge base to answer the question.
 
@@ -114,10 +117,8 @@ def ask_knowledge_chatbot(question: str, history: list[dict]) -> str:
     if not API_KEY:
         raise ValueError("GEMINI_API_KEY not set in environment / .env file.")
 
-    # Ensure resources are loaded (no-op after first call)
     _load_resources()
 
-    # Step 1: Retrieve relevant chunks using MMR
     chunks = _retrieve_chunks(question)
 
     if not chunks:
@@ -127,10 +128,8 @@ def ask_knowledge_chatbot(question: str, history: list[dict]) -> str:
             "14 chest conditions covered by PneumaVision."
         )
 
-    # Step 2: Build the prompt with retrieved context
     user_message = _build_user_message(chunks, question)
 
-    # Step 3: Call Gemini with conversation history for multi-turn support
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel(
         model_name=GEMINI_MODEL,
@@ -142,6 +141,6 @@ def ask_knowledge_chatbot(question: str, history: list[dict]) -> str:
         ),
     )
 
-    chat     = model.start_chat(history=history)
+    chat = model.start_chat(history=history)
     response = chat.send_message(user_message)
     return response.text

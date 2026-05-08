@@ -49,7 +49,7 @@ def login(user: LoginUser):
         "user": {
             "name":   db_user["name"],
             "email":  db_user["email"],
-            "age":    db_user.get("age", ""),      # ← now included
-            "gender": db_user.get("gender", ""),   # ← now included
+            "age":    db_user.get("age", ""),   
+            "gender": db_user.get("gender", ""),
         }
     }
