@@ -10,7 +10,6 @@ import matplotlib.patches as patches
 from pathlib import Path
 import json
 
-# --- Config ---
 WEIGHTS = Path(r"NIH model\best_model.pt")
 IMG_SIZE = 320
 SCORE_THRESHOLD = 0.5
@@ -80,11 +79,6 @@ def scale_bbox(bbox, src_size, dst_w, dst_h):
 
 # --- Visualization ---
 def save_gradcam_overlay(pil_img, cams, predictions, output_path):
-    """
-    Saves a figure with:
-      - Left  : original X-ray with bounding boxes
-      - Right : one Grad-CAM heatmap panel per predicted class
-    """
     n = len(predictions)
     if n == 0:
         print("  [info] No predictions above threshold — skipping visualization.")

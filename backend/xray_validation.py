@@ -6,6 +6,7 @@ import google.generativeai as genai
 from PIL import Image
 from dotenv import load_dotenv
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +42,7 @@ with only the JSON object as instructed."""
 
 
 def validate_chest_xray(image_bytes: bytes) -> dict:
-    """
-    Validate whether the uploaded image is a chest X-ray.
-
-    Parameters
-    ----------
-    image_bytes : raw bytes of the uploaded image
-
-    Returns
-    -------
-    dict with keys:
-        is_valid   : bool   — True if chest X-ray, False otherwise
-        confidence : str    — "high", "medium", or "low"
-        reason     : str    — explanation from Gemini
-        error      : str    — only present if something went wrong
-    """
     if not API_KEY:
-        # If no API key, skip validation and allow the image through
         print("[validator] No GEMINI_API_KEY found — skipping X-ray validation")
         return {"is_valid": True, "confidence": "low", "reason": "Validation skipped — no API key"}
 
@@ -95,7 +80,6 @@ def validate_chest_xray(image_bytes: bytes) -> dict:
                 lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
             )
 
-        import json
         parsed = json.loads(raw)
 
         is_xray     = bool(parsed.get("is_chest_xray", False))

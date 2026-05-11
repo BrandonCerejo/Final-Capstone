@@ -6,17 +6,17 @@ import tempfile
 import traceback
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime          # ← NEW
+from datetime import datetime
 
 from auth import router as auth_router
-from database import reports_collection  # ← NEW
+from database import reports_collection
 import logging
 
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException   # ← added Form
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse         # ← added StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from PIL import Image
 import uvicorn
 from pydantic import BaseModel
@@ -28,7 +28,6 @@ from chatbot.rag_chain import ask_knowledge_chatbot, _load_resources
 from xray_validation import validate_chest_xray
 from doctor_routes import router as doctor_router, seed_doctor
 
-# ── PDF generation ─────────────────────────────────────────────────────────
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -53,8 +52,8 @@ class KnowledgeChatRequest(BaseModel):
 
 class PDFRequest(BaseModel):
     report:        dict
-    gradcam_image: str        # base64
-    xray_image:    str        # base64
+    gradcam_image: str        
+    xray_image:    str        
     patient_email: str = ""
 
 
@@ -455,10 +454,6 @@ async def generate_pdf(req: PDFRequest):
 
 @app.post("/preview-pdf", tags=["Report"])
 async def preview_pdf(req: PDFRequest):
-    """
-    Generate PDF and return each page as a base64 PNG.
-    Uses PyMuPDF (fitz) — no poppler or external tools needed.
-    """
     try:
         import fitz  # PyMuPDF
 

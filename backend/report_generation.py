@@ -12,10 +12,6 @@ load_dotenv()
 API_KEY    = os.environ.get("GEMINI_API_KEY")
 MODEL_NAME = "gemini-3.1-flash-lite-preview"
 
-# -------------------------------------------------------------------
-# Prompts
-# -------------------------------------------------------------------
-
 SYSTEM_PROMPT = """You are a clinical AI radiology report generator. Your role is to produce 
 structured, professional chest X-ray analysis reports based strictly on the output of a 
 DenseNet121 multi-label classification model with Grad-CAM localisation, and the accompanying 
@@ -160,11 +156,6 @@ Return ONLY a JSON object matching this exact schema — no other text:
   "disclaimer": ""
 }}"""
 
-
-# -------------------------------------------------------------------
-# Image loading
-# -------------------------------------------------------------------
-
 def load_image_as_base64(image_path: str):
     path = Path(image_path)
     suffix = path.suffix.lower()
@@ -186,10 +177,6 @@ def load_image_as_base64(image_path: str):
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
     return b64, mime_type
 
-
-# -------------------------------------------------------------------
-# Gemini call
-# -------------------------------------------------------------------
 
 def call_gemini(image_b64: str, mime_type: str,
                 gradcam_b64: str = None, gradcam_mime: str = None,
@@ -218,10 +205,6 @@ def call_gemini(image_b64: str, mime_type: str,
     return response.text
 
 
-# -------------------------------------------------------------------
-# JSON parsing
-# -------------------------------------------------------------------
-
 def parse_json_response(raw: str) -> dict:
     text = raw.strip()
     if text.startswith("```"):
@@ -232,10 +215,6 @@ def parse_json_response(raw: str) -> dict:
     except json.JSONDecodeError as e:
         raise ValueError(f"Gemini returned invalid JSON.\nError: {e}\n\nRaw:\n{raw[:500]}")
 
-
-# -------------------------------------------------------------------
-# Report printing
-# -------------------------------------------------------------------
 
 def print_report(report: dict):
     sep = "=" * 70
@@ -280,10 +259,6 @@ def print_report(report: dict):
     print(f"  {report.get('disclaimer', '')}")
     print(f"{sep}\n")
 
-
-# -------------------------------------------------------------------
-# Main pipeline
-# -------------------------------------------------------------------
 
 def run_pipeline(image_path: str, json_input, output_path: str = "report.json", patient_info_override: dict = None) -> dict:
     if not API_KEY:
@@ -331,7 +306,6 @@ def run_pipeline(image_path: str, json_input, output_path: str = "report.json", 
     print("[5/5] Parsing and saving report...")
     report = parse_json_response(raw_response)
 
-
     # Inject real patient info if provided
     if patient_info_override:
         report.setdefault("patient_info", {})
@@ -344,10 +318,6 @@ def run_pipeline(image_path: str, json_input, output_path: str = "report.json", 
     print_report(report)
     return report
 
-
-# -------------------------------------------------------------------
-# Entry point
-# -------------------------------------------------------------------
 
 if __name__ == "__main__":
     IMAGE_PATH  = r"NIH model\00000001_002.png"        # original X-ray

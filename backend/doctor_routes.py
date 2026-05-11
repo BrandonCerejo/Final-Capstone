@@ -326,8 +326,8 @@ def export_training_data():
 @router.get("/admin/check-training", tags=["Admin"])
 def check_training_status():
     unused_count = label_corrections_collection.count_documents({"used_for_training": False})
-    print("\n" + "█" * 60)
+    print("\n" + "=" * 60)
     print(f"CORRECTIONS IN DB: {unused_count}  {'READY!' if unused_count >= 2 else 'NOT READY YET'}")
     print(f"http://localhost:8000/doctor/export-training-data")
-    print("█" * 60 + "\n")
+    print("=" * 60 + "\n")
     return {"unused_count": unused_count, "export_ready": unused_count >= 2}
